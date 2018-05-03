@@ -1,0 +1,14 @@
+name = Clientela Product
+description = Product Description
+package = Pro Drupal Development
+core = 7.x
+files[]=clientela_product.module
+files[]=clientela_product.install
+files[]=search_product.inc
+files[]=search_featured_product.inc
+files[]=display.inc
+files[]=product_wishlist.inc
+files[]=new_user_registration.inc
+files[]=product_list.inc
+stylesheet[all][] = styles.css
+package = "Clientela"

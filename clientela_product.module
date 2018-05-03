@@ -1,0 +1,716 @@
+<?php
+/**
+* Implements hook_menu().
+*/
+
+module_load_include('inc','clientela_product','search_product');
+module_load_include('inc','clientela_product','product_wishlist');
+module_load_include('inc','clientela_product','search_featured_product');
+module_load_include('inc','clientela_product','display');
+module_load_include('inc','clientela_product','product_import');
+module_load_include('inc','clientela_product','product_list');
+module_load_include('inc','clientela_product','new_user_registration');
+// drupal_add_js(drupal_get_path('module', 'clientela_product') . '/destroy_session.js');
+drupal_add_css(drupal_get_path('module','clientela_product').'/styles.css');
+
+
+function clientela_product_init(){
+  $attach=t('Attach A File');
+  drupal_add_css('span.to-file:before {content: "'.$attach.'" !important ;}',$option['type'] = 'inline');
+}
+
+function clientela_product_menu() {
+  $items['product/create'] = array(
+    'title' => t('Create Product'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('clientela_product_form'),
+    'access arguments' => array('administer product application'),
+    'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/update/%'] = array(
+    'title' => t('Update Product'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('clientela_product_form'),
+    'access arguments' => array('administer product application'),
+    'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/delete/%'] = array(
+    'title' => t('Delete Product'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('delete_confirm', 2),
+    'access arguments' => array('administer product application'),
+    'weight' => 1,
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+  );
+  $items['product/list'] = array(
+    'title' => t('Listing'),
+    'page callback' => 'all_record_from_db',
+    'access arguments' => array('administer product application'),
+    'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/search'] = array(
+  'title' => t('Search'),
+  'page callback' => 'client_details',
+  'access arguments' => array('administer product application'),   
+  'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/featured'] = array(
+  'title' => t('Featured Products'),
+  'page callback' => 'get_featured_product',
+  'access arguments' => array('administer featured product'),   
+  'type' => MENU_NORMAL_ITEM
+  );
+  $items['featured/product/detail/%'] = array(
+      'title' => t('Featured Products'),
+      'description' => 'Details of Featured Product',
+      'page callback' => 'featured_product_display',
+      'page arguments' => array(3),
+      'access arguments' => array('administer featured product'),   
+  );
+  //For setting the featured product id in session
+  $item['set/session/%']=array(
+    'description' => 'For setting product id in session',
+    'page callback' => 'set_session',
+    // 'page arguments' => array(2),
+    // 'title' => 'Wishlist single item',
+    'access arguments' => array('administer featured product'),
+  );
+  $items['newuser/registration'] = array(
+  'title' => t('New User Registration'),
+  'page callback' => 'drupal_get_form',
+  'page arguments' => array('new_user_registration'),
+  'access arguments' => array('administer featured product'),   
+  'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/wishlist'] = array(
+  'title' => t('Wishlisted Products'),
+  'page callback' => 'get_wishlisted_product',
+  'access arguments' => array('administer featured product'),   
+  'type' => MENU_NORMAL_ITEM
+  );
+  $items['product/sample'] = array(
+     'page callback' => 'sample_pdf_open',
+      'access arguments' => array('administer product application'),
+  );
+  $items['product/detail/%'] = array(
+      'title' => t('View product'),
+      'description' => 'Create a new product.',
+      'page callback' => 'product_display',
+      'page arguments' => array(2),
+      'access arguments' => array('administer product application'),
+  );
+  $items['product/import'] = array(
+        'title' => t('Import Products'),
+        'description' => 'Import Product from file.',
+        'page callback' => 'product_importer_pagecallback',
+        'access arguments' => array('administer product application'),
+        'type' => MENU_NORMAL_ITEM,
+      );
+  return $items;
+}
+
+/**
+*Implement hook_permission
+*/
+function clientela_product_permission(){
+  return array(
+      'administer product application' =>array(
+        'title' => t('Administer product applicationnn'),
+        'description' => t('Permissions for Product module'),
+      ),
+      'administer featured product' =>array(
+        'title' => t('Administer featured product'),
+        'description' => t('Permissions for Featured Product'),
+      ),
+   );
+
+    return $permission;
+}
+
+function set_session(){
+  print_r('expression');die;
+  $id=arg(2);
+  $_SESSION['featured_product_id']=$id;
+  // drupal_goto($base_url.'/newuser/registration');            redirect it from ajax code
+}
+
+
+//Function to alter the login form
+function clientela_product_form_alter(&$form, &$form_state, $form_id){
+  if($form_id == 'user_login'){
+    session_start();
+    print_r('in form alter  ');
+    print_r('featured_product_id :- '.$_SESSION['featured_product_id']);
+    print_r('  redirect_user_to_wishlist_page :- '.$_SESSION['redirect_user_to_wishlist_page']);
+    if(isset($_SESSION['featured_product_id']) && isset($_SESSION['redirect_user_to_wishlist_page'])){
+      print_r('in form alter if');
+      $form['#submit'][] = 'redirect_user_to_wishlist';
+    }
+  }
+}
+
+function redirect_user_to_wishlist($form, &$form_state){
+  global $user;
+  print_r('in redirect_user_to_wishlist_page ');
+  $user = user_load($form_state['uid']);
+  $result=wishlist_node_create_update($user);
+  $form_state['redirect'] = 'product/wishlist';
+  // user_login_finalize($form_state);
+}
+
+function delete_confirm($form, &$form_state, $id) {
+  $form['id'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $id,
+  );
+  $form = confirm_form($form,
+      'Are you sure, Do you want to delete?',
+      'Product/list',
+      'The action cannot be undone.',
+      'Delete',
+      t('Cancel')
+    );
+    return $form;
+}
+
+function delete_confirm_submit($form, &$form_state){
+  if($form_state['values']['confirm']) {
+    $id=$form_state['values']['id'];
+    delete_default_values($id);
+  }
+  drupal_goto('product/list');
+}
+
+//  Page callback function for the menu item
+
+function product_importer_pagecallback(){
+    $module_path = drupal_get_path('module', 'product_importer');
+    $form = drupal_get_form('product_importer_form');
+    $output = "";
+    $output .= drupal_render($form);
+    return $output;
+}
+
+
+/*
+**Function for getting taxonomy vocabulary values.
+*/
+function clientela_product_get_taxonomy_term_options($machine_name){
+  Global $user;
+    $options = array(); 
+    $options[''] = t('Select');
+    //i18n_taxonomy_term_get_translation
+    $vid = taxonomy_vocabulary_machine_name_load($machine_name)->vid;
+    $options_source = taxonomy_get_tree($vid); 
+    foreach($options_source as $item ) {
+      if($user->language == $item->language){
+        $key = $item->tid;
+        $value = $item->name;
+        $options[$key] = $value;
+      }
+    }
+    return $options;
+}
+
+
+/**
+ * Implements hook_block_info().
+ */
+function clientela_product_block_info() {
+  $blocks = array();
+  $blocks['search_field'] = array(
+    'info' => t('Product Search'),
+  );  
+  $blocks['product_list'] = array(
+    'info' => t('Product List'),
+  );
+  return $blocks;
+}
+/**
+* Implements hook_block_view().
+*/
+function clientela_product_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'search_field':
+      $form=drupal_get_form('clientela_product_nameform');
+      $block['content'] = drupal_render($form);
+      break;
+    case 'product_list':
+      $form=drupal_get_form('clientela_product_list_nameform');
+      $block['content'] = drupal_render($form);
+     break;
+  }
+  return $block;
+}
+
+
+/**
+* Define a form.
+*/
+function clientela_product_form() {
+  $product_a_i_id ="";
+  $product_a_i_id = arg(2);
+  //Hidden field for dynamic table name using getCompanyTaleName function.
+  global $user;
+   $client_specific_table = getCompanyTableName($user);
+   $client_specific_table = $client_specific_table['product_table'];
+  //Function to get the data for default values in form.(For edit option).
+  $default_values = (!empty($product_a_i_id))?get_default_values($product_a_i_id,$client_specific_table):array();
+   $action= !empty($default_values)?t('update'):t('submit');
+   $form['product_id'] = array(
+    '#title' => t('Product ID'),
+    '#type' => 'textfield',
+     '#default_value' => isset($default_values['product_id'])?$default_values['product_id']:'',
+     '#required' => TRUE
+  );  
+  $form['title'] = array(
+    '#title' => t('Title'),
+    '#type' => 'textfield',
+    '#default_value' => isset($default_values['title'])?$default_values['title']:'',
+    '#required' => TRUE
+  );
+  $form['price'] = array(
+    '#title' => t('Price ($)'),
+    '#type' => 'textfield',
+    '#default_value' => isset($default_values['price'])?$default_values['price']:'',
+    '#required' => TRUE
+  );
+  $form['description'] = array(
+    '#title' => t('Description'),
+    '#type' => 'textarea',
+    '#default_value' => isset($default_values['description'])?$default_values['description']:'',
+  ); 
+
+  $form['color'] = array(
+    '#title' => t('Color'),
+    '#type' => 'select',
+    '#default_value' => isset($default_values['color'])?$default_values['color']:'',
+    '#options' => clientela_product_get_taxonomy_term_options('color_taxonomy'),
+    '#required' => TRUE
+  );
+  $form['size'] = array(
+    '#title' => t('Size'),
+    '#type' => 'select',
+     '#default_value' => isset($default_values['size'])?$default_values['size']:'',
+     '#options' => clientela_product_get_taxonomy_term_options('size_taxonomy'),
+     '#required' => TRUE
+  );
+  $form['category'] = array(
+    '#title' => t('Category'),
+    '#type' => 'select',
+    '#default_value' => isset($default_values['category'])?$default_values['category']:'',
+    '#options' => clientela_product_get_taxonomy_term_options('category_taxonomy'),
+    '#required' => TRUE
+  );
+  $description=t('File dimension must be more than (480*480). <br/> Allowed file types: png jpg jpeg.');
+   $form['image'] = array(
+    '#title' => t('Main Image'),
+    '#type' => 'managed_file',
+    '#default_value' => isset($default_values['image'])?$default_values['image']:'',
+     '#theme' => 'upload_thumbnail',
+    '#upload_location' => 'public://product_image/',
+    '#description' => $description,
+    // '#description' => 'Allowed file types: png jpg jpeg.',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('png jpg jpeg'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  ); 
+  $form['image_1'] = array(
+    '#title' => t('Image 1 (optional)'),
+    '#type' => 'managed_file',
+    '#upload_location' => 'public://product_image/',
+    '#theme' => 'upload_thumbnail',
+    '#default_value' => isset($default_values['image_1'])?$default_values['image_1']:'',
+    '#description' => $description,
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('jpg jpeg png'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  );
+  $form['image_2'] = array(
+    '#title' => t('Image 2 (optional)'),
+    '#type' => 'managed_file',
+    '#default_value' => isset($default_values['image_2'])?$default_values['image_2']:'',
+    '#description' => $description,
+    '#theme' => 'upload_thumbnail',
+    '#upload_location' => 'public://product_image/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('png jpg jpeg'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  );
+  $form['image_3'] = array(
+    '#title' => t('Image 3 (optional)'),
+    '#type' => 'managed_file',
+    '#default_value' => isset($default_values['image_3'])?$default_values['image_3']:'',
+    '#description' => $description,
+    '#theme' => 'upload_thumbnail',
+    '#upload_location' => 'public://product_image/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('png jpg jpeg'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  );
+  $form['image_4'] = array(
+    '#title' => t('Image 4 (optional)'),
+    '#type' => 'managed_file',
+    '#default_value' => isset($default_values['image_4'])?$default_values['image_4']:'',
+    '#description' => $description,
+    '#theme' => 'upload_thumbnail',
+    '#upload_location' => 'public://product_image/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('png jpg jpeg'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  );
+  $form['image_5'] = array(
+    '#title' => t('Image 5 (optional)'),
+    '#type' => 'managed_file',
+     '#default_value' => ($default_values['image_5']!=0)?$default_values['image_5']:'',
+     '#description' => $description,
+    '#theme' => 'upload_thumbnail',
+    '#upload_location' => 'public://product_image/',
+    '#upload_validators' => array(
+      'file_validate_extensions' => array('png jpg jpeg'),
+      'file_validate_image_resolution' => array('','480x480'),
+    ),
+  );
+  
+   $form['p_id'] = array(
+    '#title' => t('S id'),
+    '#type' => 'hidden',
+    '#default_value' => isset($default_values['product_id'])?$default_values['product_id']:'',
+  );
+  $form['active_status'] = array(
+    '#title' => t('Active'),
+    '#type' => 'checkbox',
+    '#default_value' => isset($default_values['active_status'])?$default_values['active_status']:'',
+  );
+  $form['featured'] = array(
+    '#title' => t('Featured'),
+    '#type' => 'checkbox',
+    '#default_value' => isset($default_values['featured'])?$default_values['featured']:'',
+  );
+  $form['id'] = array(
+    '#title' => t('S id'),
+    '#type' => 'hidden',
+    '#default_value' => isset($default_values['id'])?$default_values['id']:'',
+  );
+   $form['client_specific_table'] = array(
+    '#title' => t('S id'),
+    '#type' => 'hidden',
+    '#default_value' => $client_specific_table,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t($action)
+  );  
+  $form['#theme'] = 'client_product_form';
+  return $form;
+}
+
+/*
+** Validation function
+*/
+
+function clientela_product_form_validate($form ,&$form_state){
+  $title=$form_state['values']['title'];
+  $price=$form_state['values']['price'];
+  $description=$form_state['values']['description']; 
+  $p_id=$form_state['values']['p_id']; 
+  $color=$form_state['values']['color'];
+  $size=$form_state['values']['size'];
+  $category=$form_state['values']['category'];  
+  $product_id=$form_state['values']['product_id'];
+ $action=$form_state['values']['submit'];
+$image = $form_state['values']['image'];
+$image_1 =$form_state['values']['image_1'];
+$image_2 =$form_state['values']['image_2'];
+$image_3 =$form_state['values']['image_3'];
+$image_4 =$form_state['values']['image_4'];
+$image_5 =$form_state['values']['image_5'];
+
+
+  if(empty($product_id)){
+    form_set_error('product_id',
+    t('Please Enter Product Id'));
+  }
+  if(strlen($product_id)>10){
+    form_set_error('p_price',
+    t('Product Id should be less than 8 digits'));
+  }
+  if(empty($title)){
+    form_set_error('p_name',
+    t('Please Enter Product title'));
+  }
+   if(empty($price)){
+    form_set_error('p_price',
+    t('Please Enter Product Price'));
+  }
+  if(!is_numeric($price)){
+    form_set_error('p_price',
+    t('Please Enter Valid Price'));
+  }
+  if(empty($color)){
+    form_set_error('color',
+    t('Please Select color'));
+  }
+   if(empty($size)){
+    form_set_error('size',
+    t('Please Select size'));
+  }
+  if(empty($category)){
+    form_set_error('category',
+    t('Please Select category'));
+  }
+  if($image==0 && $image_1==0 && $image_2==0 && $image_3==0 && $image_4==0 && $image_5==0){
+    form_set_error('image',
+    t('Please Select atleast one image'));
+  }
+   
+  /*
+  **  Validation for product id 
+  **  Unique Product Id
+  */
+  //For Getting the Dynamic Table name
+    $client_specific_table = $form_state['values']['client_specific_table'];
+    $queryOne="";
+    $queryOne = db_select($client_specific_table, 'c')
+        ->fields('c', array('product_id'))
+        ->condition('product_id',$product_id)
+        ->execute()
+        ->fetchAll();
+  if($action==t('submit')){    
+    if($queryOne!=Array()){
+      form_set_error('p_id',
+      t('This Product Id is already used'));
+    }
+  }
+  if($action==t('update')){
+    if($queryOne!=Array()){
+      if($p_id!=$queryOne[0]->product_id){
+        form_set_error('p_id',
+        t('This Product Id is already used'));
+      }
+    }
+  }
+}
+
+/*
+** Function for form submission
+*/
+function clientela_product_form_submit($form, &$form_state)  {
+  $id=$form_state['values']['id'];
+  $title=$form_state['values']['title'];
+  $price=$form_state['values']['price'];
+  $description=$form_state['values']['description'];
+  $color=$form_state['values']['color'];
+  $size=$form_state['values']['size'];
+  $category=$form_state['values']['category'];
+if($form_state['values']['image']){
+  $image[00] = file_load($form_state['values']['image']);
+  $image[00]->status = FILE_STATUS_PERMANENT;
+  file_save($image[00]);
+  file_usage_add($image[00],'clientela_product', 'managed_file', $form_state['values']['image']);
+}
+if($form_state['values']['image_1']){
+  $image[11] = file_load($form_state['values']['image_1']);
+  $image[11]->status = FILE_STATUS_PERMANENT;
+  file_save($image[11]);
+  file_usage_add($image[11],'clientela_product', 'managed_file', $form_state['values']['image_1']);
+}
+if($form_state['values']['image_2']){
+  $image[22] = file_load($form_state['values']['image_2']);
+  $image[22]->status = FILE_STATUS_PERMANENT;
+  file_save($image[22]);
+  file_usage_add($image[22],'clientela_product', 'managed_file', $form_state['values']['image_2']);
+}
+if($form_state['values']['image_3']){
+  $image[33] = file_load($form_state['values']['image_3']);
+  $image[33]->status = FILE_STATUS_PERMANENT;
+  file_save($image[33]);
+  file_usage_add($image[33],'clientela_product', 'managed_file', $form_state['values']['image_3']);
+}
+if($form_state['values']['image_4']){
+  $image[44] = file_load($form_state['values']['image_4']);
+  $image[44]->status = FILE_STATUS_PERMANENT;
+  file_save($image[44]);
+  file_usage_add($image[44],'clientela_product', 'managed_file', $form_state['values']['image_4']);
+}
+if($form_state['values']['image_5']){
+  $image[55] = file_load($form_state['values']['image_5']);
+  $image[55]->status = FILE_STATUS_PERMANENT;
+  file_save($image[55]);
+  file_usage_add($image[55],'clientela_product', 'managed_file', $form_state['values']['image_5']);
+}
+  
+  $image[0]=$form_state['values']['image'];
+  $image[1]=$form_state['values']['image_1'];
+  $image[2]=$form_state['values']['image_2'];
+  $image[3]=$form_state['values']['image_3'];
+  $image[4]=$form_state['values']['image_4'];
+  $image[5]=$form_state['values']['image_5'];
+  
+
+  $product_id=$form_state['values']['product_id'];
+  $active_status = $form_state['values']['active_status'];
+  $featured = $form_state['values']['featured'];
+  
+  //For Getting the Dynamic Table name
+  $client_specific_table = $form_state['values']['client_specific_table'];
+  //Action field for checking submit/update case.
+  
+  $action=$form_state['values']['submit'];
+  //Condition for empty image field suffling
+  
+
+  //To swap the image 
+  for($j=0;$j<=4;$j++){
+    if($image[$j]==0){
+      for($i=5;$i>$j;$i--){
+        if($image[$i]!=0){
+          $image[$j]=$image[$i];
+          $image[$i]= 0;
+          break;
+        }
+      }
+    }
+  }
+   
+  //Insert data When user submit the form
+  if($action==t('submit'))
+  {
+    db_insert($client_specific_table)
+    ->fields(array(
+      'title' => $title,
+      'price' => $price,
+      'description' => $description,
+      'color' => $color,
+      'size' => $size,
+      'category' => $category,
+      'image' => $image[0],
+      'image_1' => $image[1],
+      'image_2' => $image[2],
+      'image_3' => $image[3],
+      'image_4' => $image[4],
+      'image_5' => $image[5],
+      'product_id' => $product_id,
+      'active_status' => $active_status,
+      'featured' => $featured,
+      ))
+    ->execute();
+    drupal_set_message(t("Product Created"));
+    drupal_goto('product/list');
+  }
+  //Update data when user edit the form
+  else
+  {
+    $num_updated = db_update($client_specific_table)
+    ->fields(array(
+      'title' => $title,
+      'price' => $price,
+      'description' => $description,
+      'color' => $color,
+      'size' => $size,
+      'category' => $category,
+      'image' => $image[0],
+      'image_1' => $image[1],
+      'image_2' => $image[2],
+      'image_3' => $image[3],
+      'image_4' => $image[4],
+      'image_5' => $image[5],
+      'product_id' => $product_id,
+      'active_status' => $active_status,
+      'featured' => $featured,
+      ))
+    ->condition('id',$id)
+    ->execute();
+    drupal_set_message(t("Product Updated"));
+    drupal_goto('product/list');
+  }
+  
+}
+
+
+
+/*
+** Function to get the data for default values in form.(For edit option).
+*/
+
+function get_default_values($id,$client_specific_table){
+  $result=array();
+  $query = db_select($client_specific_table, 'c');
+  $query ->fields('c',array('id','title','price','description','color','size','category','image','image_1','image_2','image_3','image_4','image_5','product_id','active_status','featured'))
+    ->condition('id',$id);
+  $result = $query->execute()->fetchAssoc();
+  return $result;
+}
+
+//Function to delete the row from table.
+function delete_default_values($product_a_i_id){
+  global $user;
+   $client_specific_table = getCompanyTableName($user);
+   $client_specific_table = $client_specific_table[product_table];
+  $query = db_delete($client_specific_table)
+    ->condition('id',$product_a_i_id)
+    ->execute();    
+    drupal_set_message(t("Product Deleted"));
+    drupal_goto('product/list');
+}
+
+
+/**
+* Implements hook_theme().
+*/
+function clientela_product_theme($existing, $type, $theme, $path){
+  $item = array();
+   $item['client_custom_product_search'] = array(
+    'variables' => array('rows' => null),
+    'template' => 'templates/client_custom_product_search',
+    );
+   $item['client_featured_product'] = array(
+    'variables' => array('rows' => null),
+    'template' => 'templates/client_featured_product',
+    );
+    $item['clientela_product_display'] = array(
+      'variables'=> NULL,
+      'template' => 'templates/clientela_product_display',
+    );
+    $item['client_featured_product_details'] = array(
+      'variables'=> NULL,
+      'template' => 'templates/client_featured_product_details',
+    );
+     $item['client_product_form'] = array(
+      'render element' => 'form',
+      'template' => 'templates/client_product_form',
+    ); 
+    $item['client_product_list'] = array(
+    'render element' => 'form',
+    'template' => 'templates/client_product_list',
+    ); 
+    $item['new_user_registration'] = array(
+    'render element' => 'form',
+    'template' => 'templates/new_user_registration',
+    );     
+    $item['upload_thumbnail'] = array(
+    'render element' => 'element',
+    ); 
+   return $item;
+}
+
+//Theme function for individual image field
+function theme_upload_thumbnail($variables) {
+  $element = $variables['element'];
+  if (isset($element['#file']->uri)) { 
+    $output = '<div id="edit-logo-ajax-wrapper" class =""><div class="form-item form-type-managed-file form-item-logo email_pre"><span class="file">';
+    $img_url=image_style_url('thumbnail_50',$element['#file']->uri);
+    $output .= '<img src="' . $img_url . '" /> </div>';
+    $output .= '<div class = "custom-absolute">';
+    $output .= drupal_render_children($element);
+    $output .= '</div></div>';
+    return $output;
+  }
+} 
